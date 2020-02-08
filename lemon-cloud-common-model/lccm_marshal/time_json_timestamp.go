@@ -1,4 +1,4 @@
-package marshal
+package lccm_marshal
 
 import (
 	"fmt"
