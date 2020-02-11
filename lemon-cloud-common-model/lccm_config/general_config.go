@@ -12,5 +12,6 @@ type GeneralConfig struct {
 		SecretId     string `yaml:"secret_id"`
 		SecretKey    string `yaml:"secret_key"`
 		OverrideHost string `yaml:"override_host"`
+		Port         uint16
 	}
 }
