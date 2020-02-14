@@ -1,4 +1,4 @@
-package lccd_strings
+package lccc_define
 
 const LEMON_CLOUD_ASCII_IMAGE = `
    __                         _______             __

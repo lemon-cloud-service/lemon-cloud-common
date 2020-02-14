@@ -19,7 +19,7 @@ require (
 	github.com/grpc-ecosystem/grpc-gateway v1.12.2 // indirect
 	github.com/jinzhu/gorm v1.9.12
 	github.com/jonboulle/clockwork v0.1.0 // indirect
-	github.com/lemon-cloud-service/lemon-cloud-common/lemon-cloud-common-model v0.0.0-20200208132904-9f1e2968067f
+	github.com/lemon-cloud-service/lemon-cloud-common/lemon-cloud-common-utils v0.0.0-00010101000000-000000000000
 	github.com/prometheus/client_golang v1.4.1 // indirect
 	github.com/soheilhy/cmux v0.1.4 // indirect
 	github.com/tmc/grpc-websocket-proxy v0.0.0-20200122045848-3419fae592fc // indirect
@@ -34,4 +34,4 @@ require (
 
 replace github.com/coreos/go-systemd => github.com/coreos/go-systemd/v22 v22.0.0
 
-replace github.com/lemon-cloud-service/lemon-cloud-common/lemon-cloud-common-model => ../lemon-cloud-common-model
+replace github.com/lemon-cloud-service/lemon-cloud-common/lemon-cloud-common-utils => ../lemon-cloud-common-utils

@@ -1,4 +1,4 @@
-package lccm_config
+package lccc_model
 
 type GeneralConfig struct {
 	Registry struct {
