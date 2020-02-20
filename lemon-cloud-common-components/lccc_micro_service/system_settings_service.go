@@ -1,7 +1,6 @@
 package lccc_micro_service
 
 import (
-	"context"
 	"fmt"
 	"github.com/lemon-cloud-service/lemon-cloud-common/lemon-cloud-common-components/lccc_general_manager"
 	"github.com/lemon-cloud-service/lemon-cloud-common/lemon-cloud-common-components/lccc_model"
@@ -39,7 +38,7 @@ func (sss *SystemSettingsService) StartWatchCurrentServiceSettingsValue() {
 		CoreServiceSingletonInstance().ServiceGeneralConfig.Service.Namespace,
 		KEY_C_SYSTEM_SETTINGS_VALUE,
 		CoreServiceSingletonInstance().ServiceBaseInfo.ServiceKey)
-	watchChain := lccc_general_manager.EtcdManagerInstance().ClientInstance().Watch(context.Background(), watchKey, clientv3.WithPrefix())
+	watchChain := lccc_general_manager.EtcdManagerInstance().ClientInstance().Watch(GetDefaultRegistryContext(), watchKey, clientv3.WithPrefix())
 	go func() {
 		for range watchChain {
 			lccu_log.Info("Observe that the system settings have changed and start refreshing the data...")
@@ -64,7 +63,7 @@ func (sss *SystemSettingsService) GetAllSystemSettingsValue() (map[string]map[st
 		CoreServiceSingletonInstance().ServiceGeneralConfig.Service.Namespace,
 		KEY_C_SYSTEM_SETTINGS_VALUE,
 		CoreServiceSingletonInstance().ServiceBaseInfo.ServiceKey)
-	rsp, err := lccc_general_manager.EtcdManagerInstance().ClientInstance().Get(context.Background(), prefixKey, clientv3.WithPrefix())
+	rsp, err := lccc_general_manager.EtcdManagerInstance().ClientInstance().Get(GetDefaultRegistryContext(), prefixKey, clientv3.WithPrefix())
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +73,7 @@ func (sss *SystemSettingsService) GetAllSystemSettingsValue() (map[string]map[st
 		fullKeyComponents := strings.Split(fullKey, ".")
 		if len(fullKeyComponents) < 5 {
 			lccu_log.Error("The configuration key is invalid, skip and delete it! The format should be: $namespace.system_settings_value.$service_key.$settings_group_key.$settings_item_key, but current key is: %s", fullKey)
-			if _, err = lccc_general_manager.EtcdManagerInstance().ClientInstance().Delete(context.Background(), fullKey); err != nil {
+			if _, err = lccc_general_manager.EtcdManagerInstance().ClientInstance().Delete(GetDefaultRegistryContext(), fullKey); err != nil {
 				lccu_log.Error("Invalid system settings key deletion failed, reason: %v", err.Error())
 			}
 			continue

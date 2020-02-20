@@ -11,6 +11,7 @@ import (
 	"go.etcd.io/etcd/clientv3"
 	"strings"
 	"sync"
+	"time"
 )
 
 // 系统服务
@@ -93,7 +94,7 @@ func (cs *CoreService) RegisterInstance() error {
 	lease := clientv3.NewLease(lccc_general_manager.EtcdManagerInstance().ClientInstance())
 	var leaseGrantResp *clientv3.LeaseGrantResponse
 	var err error
-	if leaseGrantResp, err = lease.Grant(context.Background(), 10); err != nil {
+	if leaseGrantResp, err = lease.Grant(GetDefaultRegistryContext(), 10); err != nil {
 		return err
 	}
 	leaseId := leaseGrantResp.ID
@@ -136,7 +137,7 @@ func (cs *CoreService) RegisterSystemSettingsDefine() error {
 	if err != nil {
 		return err
 	}
-	if _, err = lccc_general_manager.EtcdManagerInstance().ClientInstance().Put(context.Background(), key, fmt.Sprintf("%s", json)); err != nil {
+	if _, err = lccc_general_manager.EtcdManagerInstance().ClientInstance().Put(GetDefaultRegistryContext(), key, fmt.Sprintf("%s", json)); err != nil {
 		return err
 	}
 	return nil
@@ -148,7 +149,7 @@ func (cs *CoreService) RegisterServiceBaseInfo() error {
 	if err != nil {
 		return err
 	}
-	if _, err = lccc_general_manager.EtcdManagerInstance().ClientInstance().Put(context.Background(), key, fmt.Sprintf("%s", json)); err != nil {
+	if _, err = lccc_general_manager.EtcdManagerInstance().ClientInstance().Put(GetDefaultRegistryContext(), key, fmt.Sprintf("%s", json)); err != nil {
 		return err
 	}
 	return nil
@@ -182,7 +183,7 @@ func (cs *CoreService) FastGetAllServiceInstance() map[string]map[string]*lccc_m
 func (cs *CoreService) GetAllServiceInstance() (map[string]map[string]*lccc_model.ServiceInstanceInfo, error) {
 	lccu_log.Info("Start refresh service instance data directly from the registry...")
 	prefixKey := fmt.Sprintf("%v.%v", cs.ServiceGeneralConfig.Service.Namespace, KEY_C_SERVICE_INSTANCE)
-	rsp, err := lccc_general_manager.EtcdManagerInstance().ClientInstance().Get(context.Background(), prefixKey, clientv3.WithPrefix())
+	rsp, err := lccc_general_manager.EtcdManagerInstance().ClientInstance().Get(GetDefaultRegistryContext(), prefixKey, clientv3.WithPrefix())
 	if err != nil {
 		return nil, err
 	}
@@ -192,7 +193,7 @@ func (cs *CoreService) GetAllServiceInstance() (map[string]map[string]*lccc_mode
 		fullKeyComponents := strings.Split(fullKey, ".")
 		if len(fullKeyComponents) < 4 {
 			lccu_log.Error("The configuration key is invalid, skip and delete it! The format should be: $namespace.service_instance.$service_key.$instance_key, but current key is: %s", fullKey)
-			if _, err = lccc_general_manager.EtcdManagerInstance().ClientInstance().Delete(context.Background(), fullKey); err != nil {
+			if _, err = lccc_general_manager.EtcdManagerInstance().ClientInstance().Delete(GetDefaultRegistryContext(), fullKey); err != nil {
 				lccu_log.Error("Invalid instance key deletion failed, reason: %v", err.Error())
 			}
 			continue
@@ -205,7 +206,7 @@ func (cs *CoreService) GetAllServiceInstance() (map[string]map[string]*lccc_mode
 		instance := &lccc_model.ServiceInstanceInfo{}
 		if err := json.Unmarshal(kvs.Value, instance); err != nil {
 			lccu_log.Error("Parse instance JSON registration data failed, skip parsing the data and delete it, JSON data: \n %s", kvs.Value)
-			if _, err = lccc_general_manager.EtcdManagerInstance().ClientInstance().Delete(context.Background(), fullKey); err != nil {
+			if _, err = lccc_general_manager.EtcdManagerInstance().ClientInstance().Delete(GetDefaultRegistryContext(), fullKey); err != nil {
 				lccu_log.Error("Invalid instance JSON instance registration data deletion failed, reason: %v", err.Error())
 			}
 			continue
@@ -228,7 +229,7 @@ func (cs *CoreService) FastGetAllServiceBaseInfo() map[string]*lccc_model.Servic
 func (cs *CoreService) GetAllServiceBaseInfo() (map[string]*lccc_model.ServiceBaseInfo, error) {
 	lccu_log.Info("Start refresh service base info data directly from the registry...")
 	prefixKey := fmt.Sprintf("%v.%v", cs.ServiceGeneralConfig.Service.Namespace, KEY_C_SERVICE_BASE_INFO)
-	rsp, err := lccc_general_manager.EtcdManagerInstance().ClientInstance().Get(context.Background(), prefixKey, clientv3.WithPrefix())
+	rsp, err := lccc_general_manager.EtcdManagerInstance().ClientInstance().Get(GetDefaultRegistryContext(), prefixKey, clientv3.WithPrefix())
 	if err != nil {
 		return nil, err
 	}
@@ -238,7 +239,7 @@ func (cs *CoreService) GetAllServiceBaseInfo() (map[string]*lccc_model.ServiceBa
 		fullKeyComponents := strings.Split(fullKey, ".")
 		if len(fullKeyComponents) < 3 {
 			lccu_log.Error("The configuration key is invalid, skip! The format should be: $namespace.service_base_info.$service_key, but current key is: %s", fullKey)
-			if _, err = lccc_general_manager.EtcdManagerInstance().ClientInstance().Delete(context.Background(), fullKey); err != nil {
+			if _, err = lccc_general_manager.EtcdManagerInstance().ClientInstance().Delete(GetDefaultRegistryContext(), fullKey); err != nil {
 				lccu_log.Error("Invalid base info key deletion failed, reason: %v", err.Error())
 			}
 			continue
@@ -246,7 +247,7 @@ func (cs *CoreService) GetAllServiceBaseInfo() (map[string]*lccc_model.ServiceBa
 		baseInfo := &lccc_model.ServiceBaseInfo{}
 		if err := json.Unmarshal(kvs.Value, baseInfo); err != nil {
 			lccu_log.Error("Parse base_info JSON registration data failed, skip parsing the data and delete it, JSON data: \n %s", kvs.Value)
-			if _, err = lccc_general_manager.EtcdManagerInstance().ClientInstance().Delete(context.Background(), fullKey); err != nil {
+			if _, err = lccc_general_manager.EtcdManagerInstance().ClientInstance().Delete(GetDefaultRegistryContext(), fullKey); err != nil {
 				lccu_log.Error("Invalid instance JSON base_info registration data deletion failed, reason: %v", err.Error())
 			}
 			continue
@@ -258,4 +259,9 @@ func (cs *CoreService) GetAllServiceBaseInfo() (map[string]*lccc_model.ServiceBa
 	cs.AllServiceBaseInfoPoolCache = baseInfoPool
 	lccu_log.Info("Refreshing service base info data succeeded")
 	return baseInfoPool, nil
+}
+
+func GetDefaultRegistryContext() context.Context {
+	ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
+	return ctx
 }
