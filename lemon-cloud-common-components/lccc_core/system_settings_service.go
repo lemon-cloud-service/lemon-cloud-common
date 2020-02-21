@@ -5,119 +5,119 @@ import (
 	"github.com/lemon-cloud-service/lemon-cloud-common/lemon-cloud-common-components/lccc_general_manager"
 	"github.com/lemon-cloud-service/lemon-cloud-common/lemon-cloud-common-components/lccc_model"
 	"github.com/lemon-cloud-service/lemon-cloud-common/lemon-cloud-common-utils/lccu_log"
-	"go.etcd.io/etcd/clientv3"
-	"strings"
+	"github.com/micro/go-micro/v2/config"
+	"github.com/micro/go-micro/v2/config/source/etcd"
 	"sync"
 )
 
-type SystemSettingsService struct {
-	SystemSettingsValueChangeListenerPool map[string]map[string]func(string) // 系统设置值变动监听器存储池
-	// 缓存
-	AllSettingsValueCache map[string]map[string]string `json:"all_settings_value_cache"`
+type SystemSettingsServiceStruct struct {
+	SystemSettingsContext         config.Config
+	SystemSettingsGroupDefinePool map[string]*lccc_model.SystemSettingGroupDefine
+	SystemSettingsItemDefinePool  map[string]map[string]*lccc_model.SystemSettingItemDefine
 }
 
-var systemSettingsServiceInstance *SystemSettingsService
+var systemSettingsServiceInstance *SystemSettingsServiceStruct
 var systemSettingsServiceOnce sync.Once
 
 // 单例函数
-func SystemSettingsSviceSingletonInstance() *SystemSettingsService {
+func SystemSettingsService() *SystemSettingsServiceStruct {
 	systemSettingsServiceOnce.Do(func() {
-		systemSettingsServiceInstance = &SystemSettingsService{}
-		_, err := systemSettingsServiceInstance.GetAllSystemSettingsValue()
-		if err != nil {
-			lccu_log.Error("Initially read system settings value failed, reason: ", err.Error())
+		systemSettingsServiceInstance = &SystemSettingsServiceStruct{}
+		// 将系统设置定义缓存到Map中，方便提高后面的效率
+		systemSettingsServiceInstance.SystemSettingsGroupDefinePool = make(map[string]*lccc_model.SystemSettingGroupDefine)
+		systemSettingsServiceInstance.SystemSettingsItemDefinePool = make(map[string]map[string]*lccc_model.SystemSettingItemDefine)
+		for _, systemSettingsGroupDefine := range CoreService().CoreStartParams.SystemSettingsDefine.SettingGroupList {
+			systemSettingsServiceInstance.SystemSettingsGroupDefinePool[systemSettingsGroupDefine.Key] = systemSettingsGroupDefine
+			systemSettingsServiceInstance.SystemSettingsItemDefinePool[systemSettingsGroupDefine.Key] = make(map[string]*lccc_model.SystemSettingItemDefine)
+			for _, systemSettingItemDefine := range systemSettingsGroupDefine.SettingList {
+				systemSettingsServiceInstance.SystemSettingsItemDefinePool[systemSettingsGroupDefine.Key][systemSettingItemDefine.Key] = systemSettingItemDefine
+			}
 		}
-		systemSettingsServiceInstance.StartWatchCurrentServiceSettingsValue()
 	})
 	return systemSettingsServiceInstance
 }
 
-// 开始监听当前服务的系统设置值的变动，如有变动更新缓存
-func (sss *SystemSettingsService) StartWatchCurrentServiceSettingsValue() {
-	watchKey := fmt.Sprintf("%v.%v.%v",
-		CoreService().CoreStartParams.ServiceGeneralConfig.Service.Namespace,
-		KEY_C_SYSTEM_SETTINGS_VALUE,
-		CoreService().CoreStartParams.ServiceBaseInfo.ServiceKey)
-	watchChain := lccc_general_manager.EtcdManagerInstance().ClientInstance().Watch(GetDefaultRegistryContext(), watchKey, clientv3.WithPrefix())
-	go func() {
-		for range watchChain {
-			lccu_log.Info("Observe that the system settings have changed and start refreshing the data...")
-			var err error = nil
-			_, err = sss.GetAllSystemSettingsValue()
+func (sss *SystemSettingsServiceStruct) Init() error {
+	var err error
+	if err = sss.AutoFixSystemSettingsValue(); err != nil {
+		return err
+	}
+	if sss.SystemSettingsContext, err = config.NewConfig(); err != nil {
+		return err
+	}
+	etcdSource := etcd.NewSource(
+		etcd.WithAddress(CoreService().CoreStartParams.ServiceGeneralConfig.GetRegistryUrl()),
+		etcd.WithPrefix(fmt.Sprintf("/%v/%v/%v", KEY_C_SYSTEM_SETTINGS_VALUE, CoreService().CoreStartParams.ServiceGeneralConfig.Service.Namespace, CoreService().CoreStartParams.ServiceBaseInfo.ServiceKey)),
+		etcd.StripPrefix(true))
+	if err = sss.SystemSettingsContext.Load(etcdSource); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (sss *SystemSettingsServiceStruct) AutoFixSystemSettingsValue() error {
+	for _, systemSettingsGroupDefine := range CoreService().CoreStartParams.SystemSettingsDefine.SettingGroupList {
+		for _, systemSettingItemDefine := range systemSettingsGroupDefine.SettingList {
+			key := fmt.Sprintf("/%v/%v/%v/%v/%v", KEY_C_SYSTEM_SETTINGS_VALUE, CoreService().CoreStartParams.ServiceGeneralConfig.Service.Namespace, CoreService().CoreStartParams.ServiceBaseInfo.ServiceKey, systemSettingsGroupDefine.Key, systemSettingItemDefine.Key)
+			keyName := fmt.Sprintf("/%v/%v", systemSettingsGroupDefine.Key, systemSettingItemDefine.Key)
+			getRsp, err := lccc_general_manager.EtcdManagerInstance().ClientInstance().Get(GetDefaultRegistryContext(), key)
 			if err != nil {
-				lccu_log.Error("Observed a change in the system settings value of the registry, but failed to refresh the system settings value data, reason: ", err.Error())
+				lccu_log.Errorf("[GET] An error occurred while fixing the exact system settings item %v %v.", keyName, err)
+			}
+			if getRsp.Kvs == nil {
+				lccu_log.Infof("The missing of the specified system setting item %v is detected, and the default value is added: %v", keyName, systemSettingItemDefine.DefaultValue)
+				if _, err := lccc_general_manager.EtcdManagerInstance().ClientInstance().Put(GetDefaultRegistryContext(), key, systemSettingItemDefine.DefaultValue); err != nil {
+					lccu_log.Errorf("[PUT] An error occurred while fixing the exact system settings item %v %v.", keyName, err)
+				}
 			}
 		}
+	}
+	return nil
+}
+
+func (sss *SystemSettingsServiceStruct) Get(settingsGroupKey, settingItemKey string) string {
+	return sss.SystemSettingsContext.Get(settingsGroupKey, settingItemKey).String(sss.GetSystemSettingItemDefaultValue(settingsGroupKey, settingItemKey))
+}
+
+func (sss *SystemSettingsServiceStruct) Set(settingsGroupKey, settingItemKey, newValue string) {
+	sss.SystemSettingsContext.Set(newValue, settingsGroupKey, settingItemKey)
+}
+
+func (sss *SystemSettingsServiceStruct) Watch(settingsGroupKey, settingItemKey string, callback func(string)) {
+	watch, err := sss.SystemSettingsContext.Watch(settingsGroupKey, settingItemKey)
+	lccu_log.Error("An error occurred while observing the system settings：", err)
+	go func() {
+		if val, err := watch.Next(); err == nil {
+			callback(val.String(sss.GetSystemSettingItemDefaultValue(settingsGroupKey, settingItemKey)))
+		} else {
+			lccu_log.Error("An error occurred while observing the change of system settings：", err)
+		}
+		sss.Watch(settingsGroupKey, settingItemKey, callback)
 	}()
 }
 
-// 快速从缓存中获取所有系统设置项值
-func (sss *SystemSettingsService) FastGetAllSystemSettingsValue() map[string]map[string]string {
-	return sss.AllSettingsValueCache
+// 获取系统设置定义实例，如果事先没定义过这个分组，那么将返回nil
+func (sss *SystemSettingsServiceStruct) GetSystemSettingsGroupDefine(settingsGroupKey string) *lccc_model.SystemSettingGroupDefine {
+	if systemSettingsGroup, ok := sss.SystemSettingsGroupDefinePool[settingsGroupKey]; ok {
+		return systemSettingsGroup
+	}
+	return nil
 }
 
-// 从注册中心获取所有系统设置项值，忽略缓存，直接从注册中心重新获取数据
-func (sss *SystemSettingsService) GetAllSystemSettingsValue() (map[string]map[string]string, error) {
-	lccu_log.Info("Start refresh all system settings value data directly from the registry...")
-	prefixKey := fmt.Sprintf("%v.%v.%v",
-		CoreService().CoreStartParams.ServiceGeneralConfig.Service.Namespace,
-		KEY_C_SYSTEM_SETTINGS_VALUE,
-		CoreService().CoreStartParams.ServiceBaseInfo.ServiceKey)
-	rsp, err := lccc_general_manager.EtcdManagerInstance().ClientInstance().Get(GetDefaultRegistryContext(), prefixKey, clientv3.WithPrefix())
-	if err != nil {
-		return nil, err
-	}
-	valuePool := make(map[string]map[string]string)
-	for _, kvs := range rsp.Kvs {
-		fullKey := fmt.Sprintf("%s", kvs.Key)
-		fullKeyComponents := strings.Split(fullKey, ".")
-		if len(fullKeyComponents) < 5 {
-			lccu_log.Error("The configuration key is invalid, skip and delete it! The format should be: $namespace.system_settings_value.$service_key.$settings_group_key.$settings_item_key, but current key is: %s", fullKey)
-			if _, err = lccc_general_manager.EtcdManagerInstance().ClientInstance().Delete(GetDefaultRegistryContext(), fullKey); err != nil {
-				lccu_log.Error("Invalid system settings key deletion failed, reason: %v", err.Error())
-			}
-			continue
-		}
-		groupKey := fullKeyComponents[len(fullKeyComponents)-2]
-		if _, ok := valuePool[groupKey]; !ok {
-			// groupKey 不存在，创建一个groupKey对应的map
-			valuePool[groupKey] = make(map[string]string)
-		}
-		itemKey := fullKeyComponents[len(fullKeyComponents)-1]
-		itemValue := fmt.Sprintf("%s", kvs.Value)
-		valuePool[groupKey][itemKey] = itemValue
-		if group, ok := sss.SystemSettingsValueChangeListenerPool[groupKey]; ok {
-			if callback, ok := group[itemKey]; ok {
-				// 注册了监听函数
-				callback(itemValue)
-			}
+// 获取系统设置子项定义实例，如果事先没定义过这个系统设置项，那么将返回nil
+func (sss *SystemSettingsServiceStruct) GetSystemSettingItemDefine(settingsGroupKey, settingItemKey string) *lccc_model.SystemSettingItemDefine {
+	if settingsItemMap, ok := sss.SystemSettingsItemDefinePool[settingsGroupKey]; ok {
+		if settingItemDefine, ok := settingsItemMap[settingItemKey]; ok {
+			return settingItemDefine
 		}
 	}
-	sss.FixSettingValuePool(valuePool, CoreService().CoreStartParams.SystemSettingsDefine)
-	// save to cache
-	sss.AllSettingsValueCache = valuePool
-	lccu_log.Info("Refreshing all system settings value data succeeded")
-	return valuePool, nil
+	return nil
 }
 
-// 修复从Registry中获取到的系统设置项值的map，对缺失的配置项，如果没有的话那么填充进去，如果未曾设置过，那么赋予default值
-func (sss *SystemSettingsService) FixSettingValuePool(valuePool map[string]map[string]string, settingsDefine *lccc_model.SystemSettingsDefine) {
-	for _, group := range settingsDefine.SettingGroupList {
-		if _, ok := valuePool[group.Key]; !ok {
-			valuePool[group.Key] = make(map[string]string)
-		}
-		for _, item := range group.SettingList {
-			if _, ok := valuePool[group.Key][item.Key]; !ok {
-				valuePool[group.Key][item.Key] = item.DefaultValue
-			}
-		}
+// 获取系统设置子项定义的默认值，如果事先没定义过这个系统设置项，那么将返回空字符串
+func (sss *SystemSettingsServiceStruct) GetSystemSettingItemDefaultValue(settingsGroupKey, settingItemKey string) string {
+	if settingItemDefine := sss.GetSystemSettingItemDefine(settingsGroupKey, settingItemKey); settingItemDefine != nil {
+		return settingItemDefine.DefaultValue
 	}
-}
-
-// 设置系统设置值改变监听器
-func (sss *SystemSettingsService) SetSystemSettingsValueChangeListener(settingGroupKey, settingItemKey string, callback func(string)) {
-	if _, ok := sss.SystemSettingsValueChangeListenerPool[settingGroupKey]; !ok {
-		sss.SystemSettingsValueChangeListenerPool[settingGroupKey] = make(map[string]func(string))
-	}
-	sss.SystemSettingsValueChangeListenerPool[settingGroupKey][settingItemKey] = callback
+	return ""
 }

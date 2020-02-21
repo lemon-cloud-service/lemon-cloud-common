@@ -15,3 +15,7 @@ type GeneralConfig struct {
 		Port         uint16
 	}
 }
+
+func (gc *GeneralConfig) GetRegistryUrl() string {
+	return gc.Registry.Endpoints[0]
+}
