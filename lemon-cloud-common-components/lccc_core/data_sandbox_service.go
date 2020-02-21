@@ -1,4 +1,4 @@
-package lccc_micro_service
+package lccc_core
 
 import (
 	"sync"

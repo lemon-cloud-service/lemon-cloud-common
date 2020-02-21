@@ -1,4 +1,4 @@
-package lccc_micro_service
+package lccc_core
 
 import (
 	"fmt"
@@ -35,9 +35,9 @@ func SystemSettingsSviceSingletonInstance() *SystemSettingsService {
 // 开始监听当前服务的系统设置值的变动，如有变动更新缓存
 func (sss *SystemSettingsService) StartWatchCurrentServiceSettingsValue() {
 	watchKey := fmt.Sprintf("%v.%v.%v",
-		CoreServiceSingletonInstance().ServiceGeneralConfig.Service.Namespace,
+		CoreService().CoreStartParams.ServiceGeneralConfig.Service.Namespace,
 		KEY_C_SYSTEM_SETTINGS_VALUE,
-		CoreServiceSingletonInstance().ServiceBaseInfo.ServiceKey)
+		CoreService().CoreStartParams.ServiceBaseInfo.ServiceKey)
 	watchChain := lccc_general_manager.EtcdManagerInstance().ClientInstance().Watch(GetDefaultRegistryContext(), watchKey, clientv3.WithPrefix())
 	go func() {
 		for range watchChain {
@@ -60,9 +60,9 @@ func (sss *SystemSettingsService) FastGetAllSystemSettingsValue() map[string]map
 func (sss *SystemSettingsService) GetAllSystemSettingsValue() (map[string]map[string]string, error) {
 	lccu_log.Info("Start refresh all system settings value data directly from the registry...")
 	prefixKey := fmt.Sprintf("%v.%v.%v",
-		CoreServiceSingletonInstance().ServiceGeneralConfig.Service.Namespace,
+		CoreService().CoreStartParams.ServiceGeneralConfig.Service.Namespace,
 		KEY_C_SYSTEM_SETTINGS_VALUE,
-		CoreServiceSingletonInstance().ServiceBaseInfo.ServiceKey)
+		CoreService().CoreStartParams.ServiceBaseInfo.ServiceKey)
 	rsp, err := lccc_general_manager.EtcdManagerInstance().ClientInstance().Get(GetDefaultRegistryContext(), prefixKey, clientv3.WithPrefix())
 	if err != nil {
 		return nil, err
@@ -93,7 +93,7 @@ func (sss *SystemSettingsService) GetAllSystemSettingsValue() (map[string]map[st
 			}
 		}
 	}
-	sss.FixSettingValuePool(valuePool, CoreServiceSingletonInstance().SystemSettingsDefine)
+	sss.FixSettingValuePool(valuePool, CoreService().CoreStartParams.SystemSettingsDefine)
 	// save to cache
 	sss.AllSettingsValueCache = valuePool
 	lccu_log.Info("Refreshing all system settings value data succeeded")

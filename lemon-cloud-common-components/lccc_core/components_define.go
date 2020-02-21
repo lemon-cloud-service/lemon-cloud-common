@@ -1,4 +1,4 @@
-package lccc_micro_service
+package lccc_core
 
 const KEY_C_SERVICE_INSTANCE = "service_instance"   // 服务实例
 const KEY_C_SERVICE_BASE_INFO = "service_base_info" // 服务基础信息
