@@ -44,11 +44,18 @@ func CoreService() *CoreServiceStruct {
 
 // 注册微服务的时候需要传进来的配置信息
 type CoreStartParams struct {
+	RunGrpcService                 bool                               `json:"run_grpc_service"`         // 是否启用grpc服务，如网关调用时传false即可
 	ServiceGeneralConfig           *lccc_model.GeneralConfig          `json:"service_general_config"`   // 通用配置，通常服务从本地配置文件中读取
 	ServiceBaseInfo                *lccc_model.ServiceBaseInfo        `json:"service_base_info"`        // 服务的基础信息
 	ServiceApplicationInfo         *lccc_model.ServiceApplicationInfo `json:"service_application_info"` // 服务可执行程序的应用信息，如版本数据等
 	GrpcServiceImplRegisterHandler func(server server.Server)         // Grpc服务impl注册函数
 	SystemSettingsDefine           *lccc_model.SystemSettingsDefine   `json:"system_settings_define"` // 服务所需系统设置定义
+}
+
+func (cs *CoreServiceStruct) GenerateMicroRegistry(config *lccc_model.GeneralConfig) registry.Registry {
+	return etcdv3.NewRegistry(func(op *registry.Options) {
+		op.Addrs = config.Registry.Endpoints
+	})
 }
 
 // 供各种服务调用，启动时候调用此函数来在注册中心注册服务实例
@@ -86,18 +93,16 @@ func (cs *CoreServiceStruct) Start(params *CoreStartParams) error {
 		return err
 	}
 	// 注册微服务
-	etcdv3.NewRegistry()
-	registry := etcdv3.NewRegistry(func(op *registry.Options) {
-		op.Addrs = params.ServiceGeneralConfig.Registry.Endpoints
-	})
-	service := micro.NewService(
-		micro.Address(fmt.Sprintf(":%d", params.ServiceGeneralConfig.Service.Port)),
-		micro.Registry(registry),
-		micro.Name(fmt.Sprintf("%v.%v", params.ServiceGeneralConfig.Service.Namespace, params.ServiceBaseInfo.ServiceKey)))
-	service.Init()
-	service.Server()
-	if err := service.Run(); err != nil {
-		return err
+	if params.RunGrpcService {
+		service := micro.NewService(
+			micro.Address(fmt.Sprintf(":%d", params.ServiceGeneralConfig.Service.Port)),
+			micro.Registry(cs.GenerateMicroRegistry(params.ServiceGeneralConfig)),
+			micro.Name(fmt.Sprintf("%v.%v", params.ServiceGeneralConfig.Service.Namespace, params.ServiceBaseInfo.ServiceKey)))
+		service.Init()
+		service.Server()
+		if err := service.Run(); err != nil {
+			return err
+		}
 	}
 	return nil
 }
