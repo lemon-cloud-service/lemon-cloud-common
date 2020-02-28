@@ -78,6 +78,11 @@ func (cs *CoreServiceStruct) Start(params *CoreStartParams) error {
 		lccu_log.Error("An error occurred while initializing the system settings service")
 		return err
 	}
+	// 初始化数据沙箱服务
+	if err := DataSandboxService().Init(); err != nil {
+		lccu_log.Error("An error occurred while initializing the data sandbox service")
+		return err
+	}
 	// 监视注册中心中的服务实例列表的变动
 	cs.StartWatchingAllService()
 	// 向注册中心写入 - 服务实例信息 instance

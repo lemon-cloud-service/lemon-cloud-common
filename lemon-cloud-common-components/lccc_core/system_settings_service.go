@@ -75,12 +75,24 @@ func (sss *SystemSettingsServiceStruct) AutoFixSystemSettingsValue() error {
 	return nil
 }
 
+func (sss *SystemSettingsServiceStruct) KGet(key lccc_model.SystemSettingItemKeyDefine) string {
+	return sss.Get(key.GroupKey, key.GroupKey)
+}
+
 func (sss *SystemSettingsServiceStruct) Get(settingsGroupKey, settingItemKey string) string {
 	return sss.SystemSettingsContext.Get(settingsGroupKey, settingItemKey).String(sss.GetSystemSettingItemDefaultValue(settingsGroupKey, settingItemKey))
 }
 
+func (sss *SystemSettingsServiceStruct) KSet(key lccc_model.SystemSettingItemKeyDefine, newValue string) {
+	sss.Set(key.GroupKey, key.ItemKey, newValue)
+}
+
 func (sss *SystemSettingsServiceStruct) Set(settingsGroupKey, settingItemKey, newValue string) {
 	sss.SystemSettingsContext.Set(newValue, settingsGroupKey, settingItemKey)
+}
+
+func (sss *SystemSettingsServiceStruct) KWatch(key lccc_model.SystemSettingItemKeyDefine, callback func(string)) {
+	sss.Watch(key.GroupKey, key.ItemKey, callback)
 }
 
 func (sss *SystemSettingsServiceStruct) Watch(settingsGroupKey, settingItemKey string, callback func(string)) {

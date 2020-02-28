@@ -21,3 +21,8 @@ type SystemSettingsDefine struct {
 	Introduce        string                      `json:"introduce"`
 	SettingGroupList []*SystemSettingGroupDefine `json:"setting_group_list"`
 }
+
+type SystemSettingItemKeyDefine struct {
+	GroupKey string `json:"group_key"`
+	ItemKey  string `json:"item_key"`
+}
